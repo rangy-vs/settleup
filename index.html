@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>settleup</title>
+<style>
+ body{font:15px/1.5 system-ui,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem;color:#1a1a1a}
+ input,select,button{font:inherit;padding:.4rem .6rem;margin:.15rem 0}
+ button{cursor:pointer} .card{border:1px solid #ccc;border-radius:8px;padding:1rem;margin:1rem 0}
+ .pos{color:#15803d}.neg{color:#b91c1c} li{margin:.2rem 0} .err{color:#b91c1c}
+ @media(prefers-color-scheme:dark){body{background:#111;color:#eee}.card{border-color:#444}input,select{background:#222;color:#eee;border:1px solid #555}}
+</style>
+<h1>settleup</h1><p id="msg" class="err" role="alert"></p>
+<div id="home" class="card">
+  <h2>New group</h2>
+  <input id="gname" placeholder="Group name (e.g. Apt 4B)"><br>
+  <input id="gmembers" placeholder="Members, comma separated" size="40"><br>
+  <button id="create">Create group</button>
+</div>
+<div id="group" hidden>
+  <h2 id="title"></h2><p>Share this page's URL with your roommates — the link is the group's access key.</p>
+  <div class="card"><h3>Add expense</h3>
+    <input id="desc" placeholder="Description"> <input id="amt" type="number" step="0.01" min="0.01" placeholder="Amount">
+    <select id="payer"></select> paid, split equally among everyone <button id="addexp">Add</button></div>
+  <div class="card"><h3>Balances</h3><ul id="bal"></ul><h3>Suggested payments</h3><ul id="tx"></ul></div>
+  <div class="card"><h3>Expenses</h3><ul id="exps"></ul></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const money = c => (c < 0 ? "-" : "") + "$" + (Math.abs(c) / 100).toFixed(2);
+let gid = location.hash.slice(1);
+async function api(path, method = "GET", body) {
+  const r = await fetch("/api" + path, {method, headers: {"Content-Type": "application/json"}, body: body && JSON.stringify(body)});
+  if (r.status === 204) return null;
+  const data = await r.json();
+  if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Invalid input");
+  return data;
+}
+function li(text, cls) { const e = document.createElement("li"); e.textContent = text; if (cls) e.className = cls; return e; }  // textContent: no HTML injection
+async function render() {
+  const g = await api("/groups/" + gid);
+  $("home").hidden = true; $("group").hidden = false; $("title").textContent = g.name;
+  $("payer").replaceChildren(...g.members.map(m => { const o = document.createElement("option"); o.textContent = m; return o; }));
+  $("bal").replaceChildren(...Object.entries(g.balances).map(([m, c]) => li(`${m}: ${c >= 0 ? "is owed" : "owes"} ${money(Math.abs(c))}`, c >= 0 ? "pos" : "neg")));
+  $("tx").replaceChildren(...(g.transfers.length ? g.transfers.map(t => li(`${t.from} pays ${t.to} ${money(t.cents)}`)) : [li("All settled up 🎉")]));
+  $("exps").replaceChildren(...g.expenses.map(e => {
+    const row = li(`${e.description} — ${money(e.cents)} paid by ${e.payer} `);
+    const del = document.createElement("button"); del.textContent = "delete";
+    del.onclick = () => run(async () => { await api(`/groups/${gid}/expenses/${e.id}`, "DELETE"); await render(); });
+    row.append(del); return row;
+  }));
+}
+async function run(fn) { $("msg").textContent = ""; try { await fn(); } catch (e) { $("msg").textContent = e.message; } }
+$("create").onclick = () => run(async () => {
+  const g = await api("/groups", "POST", {name: $("gname").value, members: $("gmembers").value.split(",").map(s => s.trim()).filter(Boolean)});
+  gid = g.id; location.hash = gid; await render();
+});
+$("addexp").onclick = () => run(async () => {
+  await api(`/groups/${gid}/expenses`, "POST", {description: $("desc").value, payer: $("payer").value, amount_cents: Math.round(parseFloat($("amt").value) * 100)});
+  $("desc").value = ""; $("amt").value = ""; await render();
+});
+if (gid) run(render);
+</script></html>
