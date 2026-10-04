@@ -1,6 +1,6 @@
 # settleup
 
-![ci](../../actions/workflows/ci.yml/badge.svg)
+![ci](https://github.com/rangy-vs/settleup/actions/workflows/ci.yml/badge.svg)
 
 Split shared expenses with roommates and get the **fewest payments** needed to settle up. A small FastAPI + SQLite service with a no-build web UI.
 
